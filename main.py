@@ -70,18 +70,20 @@ def tap(x: int or tuple, y=None):
     adb_send(f"shell input tap {x} {y}")
 
 
-def locatePic(pic: str, msg=None, loop=1, pause=pausetime, click=True, id=0):
+def locate_pic(pic: str, msg=None, loop=1, pause=pausetime, click=True, id=0):
+    """
+    loop not suggested to use since screenshot is not updated each time
+    :rtype: object
+    """
     p = None
-    while loop > 0:
+    for trial in range(loop):
         p = auto.locate(f"./picture/{SR}/{pic}", get_filename_by_id(id), confidence=0.8)
         if p:
-            if msg:
-                print(msg)
+            print(msg)
             if click:
                 tap(auto.center(p))
-                time.sleep(pause)
-            break
-        loop -= 1
+                return p
+        time.sleep(pause)
     return p
 
 
@@ -102,7 +104,7 @@ def locate_or_exit(pic, click=False):
     p = None
     for attempt in range(RECOGNITION_ATTEMPTS):
         screenshot(0)
-        p = locatePic(pic, loop=RECOGNITION_ATTEMPTS, click=click, id=0)
+        p = locate_pic(pic, click=click, id=0)
         if p is not None:
             return p
         time.sleep(pausetime)
@@ -120,7 +122,7 @@ def wait_till_screen_static(timeout=5):
 
 
 def start_game():
-    locatePic("NC_APPIcon.png")
+    locate_or_exit("NC_APPIcon.png", click=True)
 
 
 def start_1_1():
@@ -131,9 +133,10 @@ def start_1_1():
     locate_or_exit("1-1.png", click=True)
     time.sleep(QUICK_PAUSE)
     locate_or_exit("world_single.png", click=True)
-    time.sleep(8)
+    time.sleep(10)
     board = Battle()
-    board.get_reload_interval()
+    board.init_reload_interval()
+    print(board.get_reload_interval())
 
 
 class Battle:
@@ -142,15 +145,27 @@ class Battle:
         super(Battle, self).__init__()
         self.status = GameStatus.PREPARE_0
         self.reload_interval = 10000
+        self.init_reload_interval()
 
     def get_reload_interval(self):
-        return self.get_reload_interval()
+        return self.reload_interval
 
     def init_reload_interval(self):
-        ocr_result = asyncio.wait_for(self.init_reload_interval_async(), timeout=OCR_TIME_OUT, loop=None)
+        ocr_result = yield from asyncio.wait_for(self.init_reload_interval_async(), timeout=OCR_TIME_OUT, loop=None)
+        # result formatd
+        # [feature1, feature2, ...]
+        # For each feature:
+        #   feature1 = (Points_list(0),result text(1), confidence(2))
+        # For each Points_list:
+        #   Points_list = [left-up, right-up, right-down, left-down]
+        # For each point in Points_list:
+        #   Point = [x,y]
+        ocr_result = [element[1] for element in ocr_result if element[2] >= c_confidence]
+        counts = np.bincount(ocr_result)
+        return ocr_result[np.argmax(counts)]
+        # TODO
 
-
-    async def init_reload_interval_async(self):
+    async def init_reload_interval_async(self) -> list:
         if self.status != GameStatus.PREPARE_0:
             raise ValueError("Calling init out of preparing stage!")
         screenshot(0)
@@ -172,7 +187,7 @@ if __name__ == "__main__":
         exit(0)
     print("Successful initialization")
     start_game()
-    time.sleep(0.5)
+    time.sleep(1)
     center_tap()
     time.sleep(0.5)
     wait_till_screen_static()
