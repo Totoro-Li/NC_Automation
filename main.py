@@ -18,18 +18,16 @@ Apath = config.get('main', 'Apath')
 filename = config.get('main', 'Filename')
 pausetime = config.getint('main', 'PauseTime')
 ip = config.get('main', 'IP')
-c_confidence = config.get('main', 'Confidence')
+c_confidence = config.getfloat('main', 'Confidence')
 SC = config.getboolean('main', 'StoneCrush')
 
 
 def adb_send(command):
-    os.system(f"adb -s {ip} {command}")
+    utility.adb_send_internal(ip, command)
 
 
-def screenshot(id=0):
-    adb_send(f"shell mkdir -p {Apath}")
-    adb_send(f"shell screencap -p {Apath}/{id}_{filename}")
-    adb_send(f"pull {Apath}/{id}_{filename}")
+def screenshot():
+    return utility.screenshot_internal(ip)
 
 
 def get_filename_by_id(id=0):
@@ -37,16 +35,15 @@ def get_filename_by_id(id=0):
 
 
 def getResolution():
-    screenshot(0)
     try:
         global SR  # ScreenResolution
         global RES
-        print(get_filename_by_id(0))
-        img = Image.open(get_filename_by_id(0))
-        SR = f'{img.size[0]}x{img.size[1]}'
-        RES = (img.size[0], img.size[1])
+        img = screenshot()
+        height, width, _ = img.shape
+        SR = f'{width}x{height}'
+        RES = (width, height)
         return SR
-    except:
+    except ValueError as e:
         print('ADB Connection error')
         sys.exit(0)
 
@@ -55,44 +52,27 @@ def center_tap():
     tap(RES[0] // 2, RES[1] // 2)
 
 
-def cut_image(box):
-    utility.cut_image_internal(filename=get_filename_by_id(0), outname=f"./picture/cropped/textarea.png", box=box)
+def cut_image(image, box):
+    return utility.cut_image_internal(image, box=box)
 
 
-def extract_text(num=False):
-    return utility.extract_text_internal(filename=f"./picture/cropped/textarea.png", num=num)
+def extract_text(image, num=False):
+    return utility.extract_text_internal(image=image, num=num)
 
 
 def tap(x: int or tuple, y=None):
-    if y is None:
-        x, y = x
+    utility.tap_internal(x, y, ip)
     print(f"Tap event at point {x} {y}")
-    adb_send(f"shell input tap {x} {y}")
 
 
-def locate_pic(pic: str, msg=None, loop=1, pause=pausetime, click=True, id=0):
-    """
-    loop not suggested to use since screenshot is not updated each time
-    :rtype: object
-    """
-    p = None
-    for trial in range(loop):
-        p = auto.locate(f"./picture/{SR}/{pic}", get_filename_by_id(id), confidence=0.8)
-        if p:
-            print(msg)
-            if click:
-                tap(auto.center(p))
-                return p
-        time.sleep(pause)
-    return p
+def locate_pic(query_image=None, training_image=None, desc=None, click=False, device=None, min_match_count=10):
+    return utility.locate_pic_internal(query_image=query_image, training_image=training_image, click=click, device=ip, min_match_count=min_match_count)
 
 
-def screen_change(pause=pausetime):
-    screenshot(0)
+def screen_change(pause=QUICK_PAUSE):
+    im1 = screenshot()
     time.sleep(pause)
-    screenshot(1)
-    im1 = cv2.imread(get_filename_by_id(0))
-    im2 = cv2.imread(get_filename_by_id(1))
+    im2 = screenshot()
     if im1.shape != im2.shape:
         raise ValueError("Change of device resolution or orientation.")
     difference = cv2.subtract(im1, im2)
@@ -100,12 +80,13 @@ def screen_change(pause=pausetime):
     return result
 
 
-def locate_or_exit(pic, click=False):
+def locate_or_exit(template: str, click=False):
     p = None
+    query_image = cv2.imread(f"./picture/{SR}/{template}", 0)  # trainImage
     for attempt in range(RECOGNITION_ATTEMPTS):
-        screenshot(0)
-        p = locate_pic(pic, click=click, id=0)
+        p = locate_pic(query_image=query_image, training_image=screenshot(), click=click)
         if p is not None:
+            print(p)
             return p
         time.sleep(pausetime)
     if p is None:
@@ -114,11 +95,11 @@ def locate_or_exit(pic, click=False):
 
 
 def wait_till_screen_static(timeout=5):
-    sum = 0
-    while sum < timeout:
+    start = time.time()
+    while time.time() - start < timeout:
         if not screen_change(pausetime):
             break
-        sum += pausetime
+        time.sleep(pausetime)
 
 
 def start_game():
@@ -151,7 +132,7 @@ class Battle:
         return self.reload_interval
 
     def init_reload_interval(self):
-        ocr_result = yield from asyncio.wait_for(self.init_reload_interval_async(), timeout=OCR_TIME_OUT, loop=None)
+        ocr_result = self.init_reload_interval_async()
         # result formatd
         # [feature1, feature2, ...]
         # For each feature:
@@ -160,17 +141,22 @@ class Battle:
         #   Points_list = [left-up, right-up, right-down, left-down]
         # For each point in Points_list:
         #   Point = [x,y]
-        ocr_result = [element[1] for element in ocr_result if element[2] >= c_confidence]
-        counts = np.bincount(ocr_result)
-        return ocr_result[np.argmax(counts)]
+        try:
+            reload_time = [int(element[1]) for element in ocr_result if float(element[2]) >= c_confidence]
+        except AttributeError as e:
+            print("OCR Wrong element")
+            return self.reload_interval
+        counts = np.bincount(reload_time)
+        self.reload_interval = np.argmax(counts)
+        return self.reload_interval
         # TODO
 
-    async def init_reload_interval_async(self) -> list:
+    # TODO async design
+    def init_reload_interval_async(self) -> list:
         if self.status != GameStatus.PREPARE_0:
             raise ValueError("Calling init out of preparing stage!")
-        screenshot(0)
-        cut_image(RELOAD_BOX)
-        return extract_text(num=True)
+        cropped = cut_image(image=screenshot(), box=RELOAD_BOX)
+        return extract_text(image=cropped, num=True)
 
 
 if __name__ == "__main__":
@@ -180,6 +166,7 @@ if __name__ == "__main__":
     print(f'Screen Resolution:{SR}')
     print(f'Click interval: {pausetime}')
     print(f'Confidence setting: {c_confidence}')
+
     if not os.path.exists(f'./picture/{SR}'):
         print("Unsupported screen resolution")
         os.system('pause')
@@ -189,12 +176,13 @@ if __name__ == "__main__":
     start_game()
     time.sleep(1)
     center_tap()
-    time.sleep(0.5)
+    time.sleep(pausetime)
     wait_till_screen_static()
     tap(ANNOUNCE_CLOSE)
     time.sleep(pausetime)
     center_tap()
-    time.sleep(5)
+    time.sleep(9)
     locate_or_exit("start_battle.png")
+    print("menu found")
     start_1_1()
     # os.system(f'adb disconnect {ip}')
