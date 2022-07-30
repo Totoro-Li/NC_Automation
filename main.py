@@ -11,12 +11,9 @@ import cv2
 '''属性设置'''
 config = configparser.ConfigParser()
 config.read('config.ini', encoding='utf-8')
-Apath = config.get('main', 'Apath')
-filename = config.get('main', 'Filename')
 pausetime = config.getint('main', 'PauseTime')
 ip = config.get('main', 'IP')
 c_confidence = config.getfloat('main', 'Confidence')
-SC = config.getboolean('main', 'StoneCrush')
 
 
 def adb_send(command):
