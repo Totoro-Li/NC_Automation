@@ -1,14 +1,11 @@
 import os
 import sys
 
-import numpy as np
-import pyautogui as auto
 import time
 import configparser
-from PIL import Image
 from adb_helper import *
 import utility
-import asyncio
+import visual
 import cv2
 
 '''属性设置'''
@@ -24,6 +21,10 @@ SC = config.getboolean('main', 'StoneCrush')
 
 def adb_send(command):
     utility.adb_send_internal(ip, command)
+
+
+def get_asset_filepath(name):
+    return os.path.join(f"./picture/{SR}/", name)
 
 
 def screenshot():
@@ -53,20 +54,22 @@ def center_tap():
 
 
 def cut_image(image, box):
-    return utility.cut_image_internal(image, box=box)
+    return visual.cut_image_internal(image, box=box)
 
 
 def extract_text(image, num=False):
-    return utility.extract_text_internal(image=image, num=num)
+    return visual.extract_text_internal(image=image, num=num)
 
 
 def tap(x: int or tuple, y=None):
-    utility.tap_internal(x, y, ip)
-    print(f"Tap event at point {x} {y}")
+    _x, _y = utility.tap_internal(x, y, ip)
+    print(f"Tap event at point {_x} {_y}")
 
 
-def locate_pic(query_image=None, training_image=None, desc=None, click=False, device=None, min_match_count=10):
-    return utility.locate_pic_internal(query_image=query_image, training_image=training_image, click=click, device=ip, min_match_count=min_match_count)
+def locate_pic(query_image=None, training_image=None,
+               desc=None, click=False, device=None,
+               min_match_count=10, crop_box=None):
+    return visual.locate_pic_internal(query_image=query_image, training_image=training_image, click=click, device=ip, min_match_count=min_match_count, crop_box=crop_box)
 
 
 def screen_change(pause=QUICK_PAUSE):
@@ -82,11 +85,10 @@ def screen_change(pause=QUICK_PAUSE):
 
 def locate_or_exit(template: str, click=False):
     p = None
-    query_image = cv2.imread(f"./picture/{SR}/{template}", 0)  # trainImage
+    query_image = cv2.imread(get_asset_filepath(template), cv2.IMREAD_COLOR)  # trainImage
     for attempt in range(RECOGNITION_ATTEMPTS):
         p = locate_pic(query_image=query_image, training_image=screenshot(), click=click)
         if p is not None:
-            print(p)
             return p
         time.sleep(pausetime)
     if p is None:
@@ -107,9 +109,9 @@ def start_game():
 
 
 def start_1_1():
-    tap(WORLD)
+    tap(CONST.Button.WORLD)
     time.sleep(QUICK_PAUSE)
-    tap(WORLD_1)
+    tap(CONST.Button.WORLD)
     time.sleep(QUICK_PAUSE)
     locate_or_exit("1-1.png", click=True)
     time.sleep(QUICK_PAUSE)
@@ -118,15 +120,43 @@ def start_1_1():
     board = Battle()
     board.init_reload_interval()
     print(board.get_reload_interval())
+    print(board.get_map_info())
 
 
-class Battle:
+class Screen:
+    def __init__(self):
+        super(Screen, self).__init__()
+        self._screen = None
+        self.screen_ts = time.time()
 
+    def refresh_screen(self):
+        self._screen = screenshot()
+        self.screen_ts = time.time()
+        return self._screen
+
+
+class Battle(Screen):
     def __init__(self):
         super(Battle, self).__init__()
         self.status = GameStatus.PREPARE_0
         self.reload_interval = 10000
         self.init_reload_interval()
+        self._map = None
+
+    @property
+    def screen(self):
+        if time.time() - self.screen_ts >= MIN_REFRESH_SCREEN_INTERVAL:
+            self.refresh_screen()
+        return self._screen
+
+    @property
+    def map(self):
+        self.refresh_map()
+        return self._map
+
+    def refresh_map(self):
+        self._map = cut_image(image=self.screen, box=CONST.Box.MAP_BOX)
+        return self._map
 
     def get_reload_interval(self):
         return self.reload_interval
@@ -146,8 +176,7 @@ class Battle:
         except AttributeError as e:
             print("OCR Wrong element")
             return self.reload_interval
-        counts = np.bincount(reload_time)
-        self.reload_interval = np.argmax(counts)
+        self.reload_interval = utility.get_mode(reload_time)
         return self.reload_interval
         # TODO
 
@@ -155,8 +184,15 @@ class Battle:
     def init_reload_interval_async(self) -> list:
         if self.status != GameStatus.PREPARE_0:
             raise ValueError("Calling init out of preparing stage!")
-        cropped = cut_image(image=screenshot(), box=RELOAD_BOX)
+        self.refresh_screen()
+        cropped = cut_image(image=self.screen, box=CONST.Box.RELOAD_BOX)
         return extract_text(image=cropped, num=True)
+
+    def get_map_info(self):
+        legend = cv2.imread(get_asset_filepath("self_legend.png"), flags=cv2.IMREAD_UNCHANGED)
+        cv2.imwrite("sadfasf.png", legend)
+        dst = locate_pic(training_image=self.screen, query_image=legend, crop_box=CONST.Box.MAP_BOX, click=False)
+        return utility.get_poly_center(dst)
 
 
 if __name__ == "__main__":
@@ -173,6 +209,7 @@ if __name__ == "__main__":
         os.system(f'adb disconnect {ip}')
         exit(0)
     print("Successful initialization")
+    '''
     start_game()
     time.sleep(1)
     center_tap()
@@ -184,5 +221,6 @@ if __name__ == "__main__":
     time.sleep(9)
     locate_or_exit("start_battle.png")
     print("menu found")
+    '''
     start_1_1()
     # os.system(f'adb disconnect {ip}')
