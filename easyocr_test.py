@@ -6,10 +6,10 @@
 # @AUTHOR : Totoro
 import cv2
 from PIL import Image
-from utility import cut_image_internal, extract_text_internal
+from visual import cut_image_internal, extract_text_internal
 
 if __name__ == "__main__":
-    image = cv2.imread(u"./test.png", flags=cv2.IMREAD_COLOR)
+    image = cv2.imread("./picture/samples/easyocr_sample.png", flags=cv2.IMREAD_COLOR)
     cropped = cut_image_internal(image=image, box=(0, 0, 100, 100))
     # cv2.imwrite("cropped.png", cropped)
     print(extract_text_internal(image=cropped, num=False))

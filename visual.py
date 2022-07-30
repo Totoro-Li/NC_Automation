@@ -31,7 +31,7 @@ def cut_image_internal(image=None, box=None):
     # y
     if image is None:
         raise ValueError("Empty image file")
-    h, w, _ = image.shape
+    h, w = image.shape[:2]
     if box is None:
         box = (0, 0, w, h)
     cropped = image[box[1]:box[3], box[0]:box[2]]  # set crop box [start_row:end_row, start_col:end_col]
@@ -116,11 +116,41 @@ def OpenCV2PIL(opencv_image):
     return pil_image
 
 
-def color_match(img, low, high):
+def legend_match_internal(img, low, high) -> (np.array(), int, int):
+    """
+    :param img: input cv2 image object in BGR
+    :param low: low threshold for color filtering
+    :param high: high threshold for color filtering
+    :return: (subshape_sum, center_x, center_y)
+    """
     if img is None:
         raise ValueError("Empty image input!")
-    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)
-    # TODO
+    hsv = cv2.cvtColor(img, cv2.COLOR_BGR2HSV)  # Convert from BGR to HSV color space
+    # Range of each value in OpenCV HSV color space
+    # H:0-180
+    # S:0-255
+    # V:0-255
+    mask = cv2.inRange(hsv, low, high)
+    cv_kernel = np.ones((5, 5), dtype=np.uint8)
+    mask_morphed = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel=cv_kernel, iterations=2)
+    cnts = cv2.findContours(mask_morphed.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[-2]
+    center = None  # Figure to cover centroid
+    for cnt in cnts:
+        ((center_x, center_y), radius) = cv2.minEnclosingCircle(cnt)
+        # Calculate moment
+        # M = cv2.moments(cnt)
+        # Calculate centroid
+        cv2.circle(img, (int(center_x), int(center_y)), int(radius), (0, 255, 255), 2)
+        cv2.circle(img, center, 5, (0, 0, 255), -1)
+        x, y, w, h = cv2.boundingRect(cnt)
+        cnt_img = cut_image_internal(image=mask, box=(x, y, x + w, y + h))
+        elements = cv2.findContours(cnt_img, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)[-2]
+        subshape_sum = np.zeros(6, dtype=np.int32)
+        for element in elements:
+            approx = cv2.approxPolyDP(element, 0.04 * cv2.arcLength(element, True), True)
+            if len(approx) <= 5:
+                subshape_sum[len(approx)] += 1
+        return subshape_sum, int(center_x), int(center_y)
 
 
 def FLANN_feature_match(queryImage, trainingImage, min_match_count=10):
@@ -153,7 +183,7 @@ def FLANN_feature_match(queryImage, trainingImage, min_match_count=10):
 
         transformation_matrix, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC, 5.0)
         matches_mask = mask.ravel().tolist()
-        h, w, _ = queryImage.shape
+        h, w = queryImage.shape[:2]
 
         pts = np.float32([[0, 0], [0, h - 1], [w - 1, h - 1], [w - 1, 0]]).reshape(-1, 1, 2)
         dst = cv2.perspectiveTransform(pts, transformation_matrix)

@@ -32,6 +32,7 @@ def Const(cls):
 class Box(object):
     RELOAD_BOX = (1410, 854, 1748, 929)
     MAP_BOX = (208, 87, 522, 402)
+    BIG_MAP_BOX = (910, 199, 1588, 879)
 
 
 @Const
@@ -39,10 +40,19 @@ class Button(object):
     ANNOUNCE_CLOSE = (1891, 224)
     WORLD = (1029, 1028)
     WORLD_1 = (604, 527)
+    BIG_MAP = (355, 198)
 
 
 @Const
-class FILTERS(object):
+class LegendSubshape(object):
+    CV_MASK = np.array([0, 0, 0, 1, 2, 0], dtype=np.int32)
+    BB_MASK = np.array([0, 0, 0, 1, 1, 0], dtype=np.int32)
+    CC_MASK = np.array([0, 0, 0, 1, 0, 1], dtype=np.int32)
+    DD_MASK = np.array([0, 0, 0, 1, 0, 0], dtype=np.int32)
+
+
+@Const
+class Filters(object):
     WHITE_LOW = np.array([0, 0, 0], dtype=np.uint8)
     WHILE_HIGH = np.array([0, 0, 255], dtype=np.uint8)
     GREEN_LOW = np.array([60, 180, 189], dtype=np.uint8)
@@ -71,12 +81,29 @@ class SteerStatus(object):
 
 
 @Const
+class PlayerSide(object):
+    SELF = 0
+    ALLY = 1
+    ENEMY = 2
+
+
+@Const
+class ShipType(object):
+    CV = 0
+    BB = 1
+    CC = 2
+    DD = 3
+
+
+@Const
 class _Const(object):
     Box = Box()
     Button = Button()
-    FILTERS = FILTERS()
+    Filters = Filters()
     GameStatus = GameStatus()
     SteerStatus = SteerStatus()
+    PlayerSide = PlayerSide()
+    ShipType = ShipType()
 
 
 CONST = _Const()

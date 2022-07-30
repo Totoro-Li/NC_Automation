@@ -31,8 +31,8 @@ def screenshot():
     return utility.screenshot_internal(ip)
 
 
-def get_filename_by_id(id=0):
-    return f"{id}_{filename}"
+def legend_match(img, low, high):
+    return visual.legend_match_internal(img, low=low, high=high)
 
 
 def getResolution():
@@ -40,7 +40,7 @@ def getResolution():
         global SR  # ScreenResolution
         global RES
         img = screenshot()
-        height, width, _ = img.shape
+        height, width = img.shape[:2]
         SR = f'{width}x{height}'
         RES = (width, height)
         return SR
@@ -111,9 +111,9 @@ def start_game():
 def start_1_1():
     tap(CONST.Button.WORLD)
     time.sleep(QUICK_PAUSE)
-    tap(CONST.Button.WORLD)
+    tap(CONST.Button.WORLD_1)
     time.sleep(QUICK_PAUSE)
-    locate_or_exit("1-1.png", click=True)
+    locate_or_exit("1-3.png", click=True)
     time.sleep(QUICK_PAUSE)
     locate_or_exit("world_single.png", click=True)
     time.sleep(10)
@@ -121,6 +121,14 @@ def start_1_1():
     board.init_reload_interval()
     print(board.get_reload_interval())
     print(board.get_map_info())
+
+
+class Player:
+    def __init__(self, name: str, ship_type, player_side):
+        super(Player, self).__init__()
+        self.name = name
+        self.type = ship_type
+        self.player_side = player_side
 
 
 class Screen:
@@ -149,13 +157,19 @@ class Battle(Screen):
             self.refresh_screen()
         return self._screen
 
+    def screen_force(self):
+        self.refresh_screen()
+        return self._screen
+
     @property
     def map(self):
         self.refresh_map()
         return self._map
 
     def refresh_map(self):
-        self._map = cut_image(image=self.screen, box=CONST.Box.MAP_BOX)
+        tap(CONST.Button.BIG_MAP)
+        self._map = cut_image(image=self.screen_force(), box=CONST.Box.MAP_BOX)
+        tap(CONST.Button.BIG_MAP)
         return self._map
 
     def get_reload_interval(self):
@@ -189,10 +203,8 @@ class Battle(Screen):
         return extract_text(image=cropped, num=True)
 
     def get_map_info(self):
-        legend = cv2.imread(get_asset_filepath("self_legend.png"), flags=cv2.IMREAD_UNCHANGED)
-        cv2.imwrite("sadfasf.png", legend)
-        dst = locate_pic(training_image=self.screen, query_image=legend, crop_box=CONST.Box.MAP_BOX, click=False)
-        return utility.get_poly_center(dst)
+        map_cropped = self.map
+        direction_line = visual.line_detect_internal(map_cropped, CONST.Filters.LINE_LOW, CONST.Filters.LINE_HIGH)
 
 
 if __name__ == "__main__":
